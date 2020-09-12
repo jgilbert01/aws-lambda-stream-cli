@@ -1,7 +1,7 @@
 # aws-lambda-stream-cli
 Command line utilities for viewing events in your event lake, replaying events, resubmitting faults and more
 
-These are utilities support sister project [aws-lambda-stream](https://github.com/jgilbert01/aws-lambda-stream).
+These utilities support sister project [aws-lambda-stream](https://github.com/jgilbert01/aws-lambda-stream).
 
 ## Installation
 
