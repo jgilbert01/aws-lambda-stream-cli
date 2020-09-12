@@ -1,5 +1,7 @@
 # aws-lambda-stream-cli
-Command line utilities for replaying events, resubmitting faults and more
+Command line utilities for viewing events in your event lake, replaying events, resubmitting faults and more
+
+These are utilities support sister project [aws-lambda-stream](https://github.com/jgilbert01/aws-lambda-stream).
 
 ## Installation
 
@@ -44,7 +46,7 @@ Default parameter configurations can be setup in .eventsrc and .faultsrc json fi
 * Example .eventsrc file:
 ```
 {
-    "bucket": "my-event-lake-s3-stg-bucket-tjv1tsu7j1qs",
+    "bucket": "my-event-lake-s3-stg-bucket-tjv122u7812s",
     "stream": "stg-my-event-streams-s1"
 }
 ```
