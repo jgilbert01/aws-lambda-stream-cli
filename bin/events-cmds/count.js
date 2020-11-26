@@ -2,6 +2,7 @@ exports.command = 'count [bucket] [prefix]'
 exports.describe = 'Count the events in [bucket] for [prefix]'
 
 const _ = require('highland');
+const lodash = require('lodash');
 const now = require('moment')().utc();
 
 exports.builder = {
@@ -28,6 +29,15 @@ exports.builder = {
         alias: 'sp',
         description: 'source account profile',
         default: process.env.AWS_PROFILE || 'default'
+    },
+    format: {
+        alias: 'f',
+        choices: [
+            'kinesis', // events wrapped in kinesis records 
+            'eventbridge', // event wrapped in cloudwatch event format, delimited by EOL
+            'raw' // raw event format, delimited by EOL
+        ],
+        default: 'kinesis' // original
     }
 }
 
@@ -36,42 +46,8 @@ exports.handler = (argv) => {
 
     common.print(argv);
 
-    const get = (obj) => {
-        return common.s3.get(obj)
-            .flatMap((data) => {
-                const key = data.key;
-                const records = data.obj.Records;
-
-                return _((push, next) => {
-
-                    let record = records.shift();
-
-                    if (record) {
-                        try {
-                            let event = new Buffer(record.kinesis.data, 'base64').toString('utf8');
-                            event = JSON.parse(event);
-
-                            push(null, {
-                                key: key,
-                                record: record,
-                                event: event
-                            });
-                        } catch (err) {
-                            console.log(err);
-                            push(err);
-                        }
-
-                        next();
-                    } else {
-                        push(null, _.nil);
-                    }
-                })
-            })
-            ;
-    }
-
     common.s3.paginate()
-        .map(obj => get(obj))
+        .map(obj => common.s3.getEvents(obj))
         .parallel(argv.parallel)
 
         .reduce({}, (counters, cur) => {

@@ -2,6 +2,7 @@ exports.command = 'replay [bucket] [prefix]'
 exports.describe = 'Replay the events in [bucket] for [prefix]'
 
 const _ = require('highland');
+const lodash = require('lodash');
 const now = require('moment')().utc();
 
 exports.builder = {
@@ -57,47 +58,23 @@ exports.builder = {
         alias: 'tp',
         description: 'target account profile',
         default: process.env.AWS_PROFILE || 'default'
-    }
+    },
+    // TODO target format
+    format: {
+        alias: 'f',
+        choices: [
+            'kinesis', // events wrapped in kinesis records 
+            'eventbridge', // event wrapped in cloudwatch event format, delimited by EOL
+            'raw' // raw event format, delimited by EOL
+        ],
+        default: 'kinesis' // original
+    },
 }
 
 exports.handler = (argv) => {
     const common = require('../../lib/common')(argv);
 
     common.print(argv);
-
-    const get = (obj) => {
-        return common.s3.get(obj)
-            .flatMap((data) => {
-                const key = data.key;
-                const records = data.obj.Records;
-
-                return _((push, next) => {
-
-                    let record = records.shift();
-
-                    if (record) {
-                        try {
-                            let event = new Buffer(record.kinesis.data, 'base64').toString('utf8');
-                            event = JSON.parse(event);
-
-                            push(null, {
-                                key: key,
-                                record: record,
-                                event: event
-                            });
-                        } catch (err) {
-                            console.log(err);
-                            push(err);
-                        }
-
-                        next();
-                    } else {
-                        push(null, _.nil);
-                    }
-                })
-            })
-            ;
-    }
 
     const filterByType = obj => argv.type === '*' || argv.type === obj.event.type;
 
@@ -117,7 +94,9 @@ exports.handler = (argv) => {
         }
         else {
 
-            let buf = new Buffer(JSON.stringify({
+            // TODO format x as a Record (kinesis or dynamo) or cw event
+ 
+            let buf = Buffer.from(JSON.stringify({
                 Records: batched.concat(x)
             }));
 
@@ -134,7 +113,7 @@ exports.handler = (argv) => {
 
     const replay = function(s) {
         return s
-            .map(obj => get(obj))
+            .map(obj => common.s3.getEvents(obj))
             .parallel(argv.parallel)
 
             .filter(filterByType)
