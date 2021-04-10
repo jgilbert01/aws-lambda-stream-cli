@@ -1,6 +1,6 @@
 const { invokeLambda } = require('aws-lambda-stream');
 
-const { now, head, print, debug, digest, count } = require('../../lib/common');
+const { now, head, print, debug } = require('../../lib/common');
 
 exports.command = 'resubmit [bucket] [prefix]'
 exports.describe = 'Resubmit the faults in [bucket] for [prefix]'
@@ -20,19 +20,13 @@ exports.builder = {
         default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`,
         describe: 'folder of faults to retrieve'
     },
-    // // function: {
-    // //     alias: 'f',
-    // //     describe: 'function to resubmit the events to'
-    // // },
-    // qualifier: {
-    //     default: '$LATEST'
-    // },
     dry: {
         default: true,
         type: 'boolean'
     },
-    batch: {
-        default: 25
+    async: {
+        default: false,
+        type: 'boolean'
     },
     parallel: {
         default: 16
@@ -43,73 +37,73 @@ exports.builder = {
     window: {
         default: 500
     },
-    // target: {
-    //     alias: 'tp',
-    //     description: 'target account profile',
-    //     default: process.env.AWS_PROFILE || 'default'
-    // },
 }
 
 exports.handler = (argv) => {
     print(argv);
     head(argv)
 
-        // .map(obj => {
-        //     const fault = obj.obj;
+        .filter(
+            uow => (uow.event && uow.event.uow &&
+                uow.event.uow.record && uow.event.uow.record.kinesis) ||
+                (uow.event && uow.event.uow &&
+                    uow.event.uow.batch && uow.event.uow.batch[0] &&
+                    uow.event.uow.batch[0].record.kinesis)
+        )
 
-        //     const newKinesisEvent = {
-        //         key: obj.key,
-        //         functionName: fault.tags.functionName,
+        .map((uow => {
+            let payload = {
+                Records: uow.event.uow.batch ?
+                    uow.event.uow.batch.map(b => b.record) :
+                    [uow.event.uow.record]
+            };
 
-        //         // TODO pipeline ???
+            payload = Buffer.from(JSON.stringify(payload));
 
-        //         records: []
-        //     };
+            return {
+                ...uow,
+                recordCount: uow.event.uow.batch ? uow.event.uow.batch.length : 1,
+                invokeRequest: {
+                    FunctionName: uow.event.tags.functionname,
+                    Qualifier: argv.qualifier,
+                    InvocationType:
+                        argv.dry ? 'DryRun' :
+                            argv.async && payload.length <= 100000 ?
+                                'Event' :
+                                'RequestResponse',
+                    Payload: payload,
+                },
+            };
+        }))
 
-        //     const uows = Array.isArray(fault.uow) ? fault.uow : [fault.uow];
-
-        //     uows.forEach(uow => {
-        //         if (uow.batch) {
-        //             newKinesisEvent.records = newKinesisEvent.records.concat(fault.uow.batch.map(b => b.record));
-        //         }
-
-        //         if (uow.record) {
-        //             newKinesisEvent.records.push(fault.uow.record);
-        //         }
-        //     });
-
-        //     if (newKinesisEvent.records.length === 0) {
-        //         const e = new Error('No records in: ' + obj.key);
-        //         e.fault = fault;
-        //         throw e;
-        //     }
-
-        //     return newKinesisEvent;
-        // })
-        // .tap(debug)
-
-        // .map((uow => {
-
-        //     return {
-        //         ...uow,
-        //         invokeRequest: {
-        //             FunctionName: 'helloworld',
-        //         },
-        //     };
-        // }))
-
-        // .ratelimit(argv.rate, argv.window)
-
-
-        // TODO params
-        // .through(invokeLambda({ parallel: argv.parallel }))
-
-        // .map(batch => common.lambda.invoke(batch))
-        // .parallel(argv.parallel)
+        .ratelimit(argv.rate, argv.window)
+        .through(invokeLambda({ parallel: argv.parallel }))
+        .tap(uow => print({
+            functionName: uow.invokeRequest.FunctionName,
+            invokeResponse: uow.invokeResponse,
+        }))
         .tap(debug)
 
-        .collect()
-        .tap(collected => console.log('Count: %s', collected.length))
+        .reduce({}, (counters, uow) => {
+            const status = uow.invokeResponse.StatusCode;
+            const functionname = uow.event.tags.functionname;
+            const pipeline = `${functionname}|${uow.event.tags.pipeline}`;
+
+            counters.total = (counters.total ? counters.total : 0) + 1;
+            counters.recordCount = (counters.recordCount ? counters.recordCount : 0) + uow.recordCount;
+
+            if (!counters.statuses) counters.statuses = {};
+            const statuses = counters.statuses;
+            statuses[status] = (statuses[status] ? statuses[status] : 0) + 1;
+
+            if (!counters.functions) counters.functions = {};
+            const functions = counters.functions;
+            functions[pipeline] = (functions[pipeline] ? functions[pipeline] : 0) + 1;
+
+            return counters;
+        })
+        .tap(() => console.log('Counters:'))
+        .tap(print)
 
         .errors(console.log)
         .done(() => { });
