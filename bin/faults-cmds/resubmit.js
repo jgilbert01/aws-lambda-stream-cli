@@ -1,6 +1,6 @@
 const { invokeLambda } = require('aws-lambda-stream');
 
-const { now, head, print, debug } = require('../../lib/common');
+const { now, head, print, debug, count, errors } = require('../../lib/common');
 
 exports.command = 'resubmit [bucket] [prefix]'
 exports.describe = 'Resubmit the faults in [bucket] for [prefix]'
@@ -21,6 +21,7 @@ exports.builder = {
         describe: 'folder of faults to retrieve'
     },
     dry: {
+        alias: 'd',
         default: true,
         type: 'boolean'
     },
@@ -84,24 +85,9 @@ exports.handler = (argv) => {
         }))
         .tap(debug)
 
-        .reduce({}, (counters, uow) => {
-            const status = uow.invokeResponse.StatusCode;
-            const functionname = uow.event.tags.functionname;
-            const pipeline = `${functionname}|${uow.event.tags.pipeline}`;
+        .errors(errors)
 
-            counters.total = (counters.total ? counters.total : 0) + 1;
-            counters.recordCount = (counters.recordCount ? counters.recordCount : 0) + uow.recordCount;
-
-            if (!counters.statuses) counters.statuses = {};
-            const statuses = counters.statuses;
-            statuses[status] = (statuses[status] ? statuses[status] : 0) + 1;
-
-            if (!counters.functions) counters.functions = {};
-            const functions = counters.functions;
-            functions[pipeline] = (functions[pipeline] ? functions[pipeline] : 0) + 1;
-
-            return counters;
-        })
+        .reduce({}, count)
         .tap(() => console.log('Counters:'))
         .tap(print)
 

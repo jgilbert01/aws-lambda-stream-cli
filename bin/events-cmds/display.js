@@ -1,4 +1,4 @@
-const { now, head, print, debug, digest, count } = require('../../lib/common');
+const { now, head, print, debug, digest, count, filterByType } = require('../../lib/common');
 
 exports.command = 'display [bucket] [prefix]'
 exports.describe = 'Display the events in [bucket] for [prefix]'
@@ -36,11 +36,9 @@ exports.builder = {
 exports.handler = (argv) => {
     print(argv);
 
-    const filterByType = uow => argv.type === '*' || argv.type === uow.event.type;
-
     head(argv)
 
-        .filter(filterByType)
+        .filter(filterByType(argv))
         .map(digest)
         .tap(debug)
         .tap(uow => argv.digest ? print(uow.digest) : print(uow.event))
