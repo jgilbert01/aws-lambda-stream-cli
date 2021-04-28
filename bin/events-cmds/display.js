@@ -1,97 +1,52 @@
+const { now, head, print, debug, digest, count, filterByType } = require('../../lib/common');
+
 exports.command = 'display [bucket] [prefix]'
 exports.describe = 'Display the events in [bucket] for [prefix]'
-
-const _ = require('highland');
-const now = require('moment')().utc();
 
 exports.builder = {
     bucket: {
         alias: 'b',
         describe: 'bucket containing the events'
     },
-    stream: {
-        alias: 's',
-        describe: 'stream that delivered the events - root prefix'
+    region: {
+        alias: 'r',
+        default: process.env.AWS_REGION || 'us-east-1',
+        describe: 'root prefix'
     },
     prefix: {
         alias: 'p',
-        default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`
-    },
-    parallel: {
-        default: 16
+        default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`,
+        describe: 'folder of events to retrieve'
     },
     type: {
         alias: 't',
         default: '*'
     },
-    region: {
-        alias: 'r',
-        default: process.env.AWS_REGION || 'us-east-1'
+    digest: {
+        alias: 'd',
+        default: false,
+        type: 'boolean',
+        describe: 'output is more concise'
     },
-    source: {
-        alias: 'sp',
-        description: 'source account profile',
-        default: process.env.AWS_PROFILE || 'default'
-    }
+    parallel: {
+        default: 16
+    },
 }
 
 exports.handler = (argv) => {
-    const common = require('../../lib/common')(argv);
+    print(argv);
 
-    common.print(argv);
+    head(argv)
 
-    const get = (obj) => {
-        return common.s3.get(obj)
-            .flatMap((data) => {
-                const key = data.key;
-                const records = data.obj.Records;
+        .filter(filterByType(argv))
+        .map(digest)
+        .tap(debug)
+        .tap(uow => argv.digest ? print(uow.digest) : print(uow.event))
 
-                return _((push, next) => {
+        .reduce({}, count)
+        .tap(() => console.log('Counters:'))
+        .tap(print)
 
-                    let record = records.shift();
-
-                    if (record) {
-                        try {
-                            let event = new Buffer(record.kinesis.data, 'base64').toString('utf8');
-                            event = JSON.parse(event);
-
-                            push(null, {
-                                key: key,
-                                record: record,
-                                event: event
-                            });
-                        } catch (err) {
-                            console.log(err);
-                            push(err);
-                        }
-
-                        next();
-                    } else {
-                        push(null, _.nil);
-                    }
-                })
-            })
-            ;
-    }
-
-    const filterByType = obj => argv.type === '*' || argv.type === obj.event.type;
-
-    common.s3.paginate()
-        .map(obj => get(obj))
-        .parallel(argv.parallel)
-
-        .filter(filterByType)
-
-        .tap(common.print)
-
-        .reduce({}, (counters, cur) => {
-            counters.total = (counters.total ? counters.total : 0) + 1;
-            counters[cur.event.type] = (counters[cur.event.type] ? counters[cur.event.type] : 0) + 1;
-            return counters;
-        })
-        .tap(counters => console.log("Counters: %s", JSON.stringify(counters, null, 2)))
-
-        .errors(common.print)
-        .done(() => { })
-        ;
+        .errors(console.log)
+        .done(() => { });
 }

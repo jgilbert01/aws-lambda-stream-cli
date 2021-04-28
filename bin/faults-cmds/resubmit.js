@@ -1,35 +1,33 @@
+const { invokeLambda } = require('aws-lambda-stream');
+
+const { now, head, print, debug, count, errors } = require('../../lib/common');
+
 exports.command = 'resubmit [bucket] [prefix]'
 exports.describe = 'Resubmit the faults in [bucket] for [prefix]'
-
-const _ = require('highland');
-const now = require('moment')().utc();
 
 exports.builder = {
     bucket: {
         alias: 'b',
         describe: 'bucket containing the faults'
     },
-    stream: {
-        alias: 's',
-        describe: 'stream that delivered the faults - root prefix'
+    region: {
+        alias: 'r',
+        default: process.env.AWS_REGION || 'us-east-1',
+        describe: 'root prefix'
     },
     prefix: {
         alias: 'p',
-        default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`
-    },
-    function: {
-        alias: 'f',
-        describe: 'function to resubmit the events to'
-    },
-    qualifier: {
-        default: '$LATEST'
+        default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`,
+        describe: 'folder of faults to retrieve'
     },
     dry: {
+        alias: 'd',
         default: true,
         type: 'boolean'
     },
-    batch: {
-        default: 25
+    async: {
+        default: false,
+        type: 'boolean'
     },
     parallel: {
         default: 16
@@ -40,70 +38,57 @@ exports.builder = {
     window: {
         default: 500
     },
-    region: {
-        alias: 'r',
-        default: process.env.AWS_REGION || 'us-east-1'
-    },
-    source: {
-        alias: 'sp',
-        description: 'source account profile',
-        default: process.env.AWS_PROFILE || 'default'
-    },
-    target: {
-        alias: 'tp',
-        description: 'target account profile',
-        default: process.env.AWS_PROFILE || 'default'
-    },
 }
 
 exports.handler = (argv) => {
-    const common = require('../../lib/common')(argv);
+    print(argv);
+    head(argv)
 
-    common.print(argv);
+        .filter(
+            uow => (uow.event && uow.event.uow && uow.event.uow.record) ||
+                (uow.event && uow.event.uow && uow.event.uow.batch && uow.event.uow.batch[0] &&
+                    uow.event.uow.batch[0].record)
+        )
 
-    common.s3.paginate()
-        .flatMap(obj => common.s3.get(obj))
-        .map(obj => {
-            const fault = obj.obj;
-
-            const newKinesisEvent = {
-                key: obj.key,
-                functionName: fault.tags.functionName,
-                records: []
+        .map((uow => {
+            let payload = {
+                Records: uow.event.uow.batch ?
+                    uow.event.uow.batch.map(b => b.record) :
+                    [uow.event.uow.record]
             };
 
-            const uows = Array.isArray(fault.uow) ? fault.uow : [fault.uow];
+            payload = Buffer.from(JSON.stringify(payload));
 
-            uows.forEach(uow => {
-                if (uow.batch) {
-                    newKinesisEvent.records = newKinesisEvent.records.concat(fault.uow.batch.map(b => b.record));
-                }
-
-                if (uow.record) {
-                    newKinesisEvent.records.push(fault.uow.record);
-                }
-            });
-
-            if (newKinesisEvent.records.length === 0) {
-                const e = new Error('No records in: ' + obj.key);
-                e.fault = fault;
-                throw e;
-            }
-
-            return newKinesisEvent;
-        })
-        .tap(common.print)
+            return {
+                ...uow,
+                recordCount: uow.event.uow.batch ? uow.event.uow.batch.length : 1,
+                invokeRequest: {
+                    FunctionName: uow.event.tags.functionname,
+                    Qualifier: argv.qualifier,
+                    InvocationType:
+                        argv.dry ? 'DryRun' :
+                            argv.async && payload.length <= 100000 ?
+                                'Event' :
+                                'RequestResponse',
+                    Payload: payload,
+                },
+            };
+        }))
 
         .ratelimit(argv.rate, argv.window)
+        .through(invokeLambda({ parallel: argv.parallel }))
+        .tap(uow => print({
+            functionName: uow.invokeRequest.FunctionName,
+            invokeResponse: uow.invokeResponse,
+        }))
+        .tap(debug)
 
-        .map(batch => common.lambda.invoke(batch))
-        .parallel(argv.parallel)
-        .tap(common.print)
+        .errors(errors)
 
-        .collect()
-        .tap(d => console.log('Count: %s', d.length))
+        .reduce({}, count)
+        .tap(() => console.log('Counters:'))
+        .tap(print)
 
-        .errors(common.print)
-        .done(() => { })
-        ;
+        .errors(console.log)
+        .done(() => { });
 }
