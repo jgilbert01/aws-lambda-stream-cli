@@ -31,6 +31,7 @@ exports.builder = {
         default: '$LATEST'
     },
     dry: {
+        alias: 'd',
         default: true,
         type: 'boolean'
     },
