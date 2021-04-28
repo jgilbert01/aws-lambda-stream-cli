@@ -23,10 +23,8 @@ events ls [bucket] [prefix]
 Options:
   --help          Show help                                            [boolean]
   --bucket, -b    bucket containing the events
-  --stream, -s    stream that delivered the events - root prefix
-  --source, --sp  source account profile                    [default: "default"]
-  --prefix, -p                                          [default: "2018/12/11/"]
   --region, -r                                            [default: "us-east-1"]
+  --prefix, -p                                          [default: "2018/12/11/"]
 ```
 
 * events help
@@ -46,8 +44,8 @@ Default parameter configurations can be setup in .eventsrc and .faultsrc json fi
 * Example .eventsrc file:
 ```
 {
-    "bucket": "my-event-lake-s3-stg-bucket-tjv122u7812s",
-    "stream": "stg-my-event-streams-s1"
+    "bucket": "my-event-lake-s3-stg-bucket-123456789",
+    "region": "us-east-1"
 }
 ```
 

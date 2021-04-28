@@ -45,11 +45,9 @@ exports.handler = (argv) => {
     head(argv)
 
         .filter(
-            uow => (uow.event && uow.event.uow &&
-                uow.event.uow.record && uow.event.uow.record.kinesis) ||
-                (uow.event && uow.event.uow &&
-                    uow.event.uow.batch && uow.event.uow.batch[0] &&
-                    uow.event.uow.batch[0].record.kinesis)
+            uow => (uow.event && uow.event.uow && uow.event.uow.record) ||
+                (uow.event && uow.event.uow && uow.event.uow.batch && uow.event.uow.batch[0] &&
+                    uow.event.uow.batch[0].record)
         )
 
         .map((uow => {
