@@ -38,6 +38,9 @@ exports.builder = {
     window: {
         default: 500
     },
+    timeout: {
+        default: 20000
+    },
 }
 
 exports.handler = (argv) => {
@@ -76,7 +79,7 @@ exports.handler = (argv) => {
         }))
 
         .ratelimit(argv.rate, argv.window)
-        .through(invokeLambda({ parallel: argv.parallel }))
+        .through(invokeLambda({ parallel: argv.parallel, timeout: argv.timeout }))
         .tap(uow => print({
             functionName: uow.invokeRequest.FunctionName,
             invokeResponse: uow.invokeResponse,
