@@ -1,6 +1,6 @@
 {
   "name": "aws-lambda-stream-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command line utilities for viewing events in your event lake, replaying events, resubmitting faults and more",
   "repository": {
     "type": "git",
