@@ -35,6 +35,10 @@ exports.builder = {
         default: true,
         type: 'boolean'
     },
+    continuationToken: {
+        alias: 'c',
+        describe: 'pick up where we left off'
+    },
     batch: {
         default: 25
     },

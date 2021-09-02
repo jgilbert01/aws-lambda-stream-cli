@@ -25,6 +25,10 @@ exports.builder = {
         default: true,
         type: 'boolean'
     },
+    continuationToken: {
+        alias: 'c',
+        describe: 'pick up where we left off'
+    },
     async: {
         default: false,
         type: 'boolean'

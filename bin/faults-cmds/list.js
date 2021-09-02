@@ -18,6 +18,10 @@ exports.builder = {
         default: `${now.format('YYYY')}/${now.format('MM')}/${now.format('DD')}/`,
         describe: 'folder of objects to retrieve'
     },
+    continuationToken: {
+        alias: 'c',
+        describe: 'pick up where we left off'
+    },
     parallel: {
         default: 16
     },
