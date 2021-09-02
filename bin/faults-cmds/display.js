@@ -24,6 +24,10 @@ exports.builder = {
         type: 'boolean',
         describe: 'output is more concise'
     },
+    continuationToken: {
+        alias: 'c',
+        describe: 'pick up where we left off'
+    },
     parallel: {
         default: 16
     },
